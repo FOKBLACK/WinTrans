@@ -1,25 +1,45 @@
-# WinTrans 2.3 — 非注入式窗口透明度工具
+# WinTrans
 
-Windows 10/11（x64），.NET Framework 4.8 单文件程序，**不向任何进程注入代码**，只改窗口属性、调用 DWM 缩略图。
+**非注入式 Windows 窗口透明度工具** —— 不碰别人的进程，把任意窗口、甚至游戏画面调成半透明。
 
-## 2.3 变化
+![license](https://img.shields.io/badge/license-MIT-green.svg)
+![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue.svg)
+![runtime](https://img.shields.io/badge/.NET%20Framework-4.8-informational.svg)
+![size](https://img.shields.io/badge/exe-228%20KB-lightgrey.svg)
 
-- 修复**托盘右键「退出」点了没反应**：`ExitApp()` 原本直接调 `Close()`，而 `OnFormClosing` 把「用户关闭」一律 `e.Cancel = true` 后 `Hide()`，于是点退出只是又隐藏了一次，进程留在托盘里。
-- 改为增加 `exiting` 意图标志：托盘退出先置标志、再 `Close()`，`OnFormClosing` 只对「非退出意图的用户关闭」做拦截；退出时先 `tray.Visible = false` 摘掉图标，再恢复全部窗口透明度、注销热键（各自 try/catch 兜底，保证不会被异常卡住退出）。
-- 点窗口右上角 × 的行为不变：仍然最小化到托盘，热键继续可用。
+![WinTrans 主界面](docs/ui-main.png)
 
-## 2.2 变化
+---
 
-- 卡片滑块拖动时**即时生效**，不再每次 Scroll 都重启动 220ms 渐变（原来拖动中透明度几乎不动、松手才补动画，看起来就是跳）
-- 拖动中不把数值写回 TrackBar，避免滑块被程序回写打断；百分比数字按 ~33fps 刷新，松手/松键立刻校准
-- 预设热键（Ctrl+Alt+1~5）仍然保留 220ms 平滑过渡，不受影响
+## 这是什么
 
-## 2.1 变化
+WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透明度**：把浏览器、播放器、聊天窗口调成半透明，压在后面的内容就能透出来。
 
-- 镜像浮窗支持**外轮廓拉伸缩放**：抓住任意一条边或一个角（7px 内）即可八向改尺寸，画面实时跟随，最小 80×60
-- 浮窗拖动改为直连 `SetWindowPos` + 8ms 合并，不再每帧走 WinForms 布局与重绘，拖动跟手度提升
-- 手动拉伸后自动按新尺寸锁定（`FitLocked=false`），心跳不再把尺寸弹回默认比例；右键「贴合源窗口比例」可恢复
-- 主窗标题精简为 `WinTrans`，程序图标换成自定义多尺寸 `.ico`
+它有两个模式：
+
+- **整窗透明** —— 直接改窗口属性，适合浏览器、Electron 应用、普通 Win32 窗口。
+- **镜像浮窗** —— 用 DWM 把窗口画面实时克隆成一个半透明浮窗贴在最上层，适合**游戏**，以及那些会自己重置窗口样式的程序。
+
+全程 **不向任何进程注入代码**，不装驱动、不挂全局 Hook。改的只是窗口自己的样式位（`WS_EX_LAYERED` / alpha），关掉程序会自动还原。
+
+**典型用法**：一边玩游戏一边看攻略/直播；照着视频临摹写字；把聊天窗口淡下去专注干活；把参考图压在半透明层上比对。
+
+## 和现成工具的区别
+
+| 工具 | 调透明度 | 镜像浮窗 / 区域克隆 | 注入进程 | 授权 |
+|---|---|---|---|---|
+| **WinTrans** | 有，每窗口独立滑块 | 有，可框选局部区域 | 无 | MIT |
+| AltSnap / AltDrag | 有，Alt+滚轮 | 无 | 无（AltSnap 已移除注入） | GPL |
+| SmartSystemMenu | 有，右键菜单档位 | 无 | **有**，Hook DLL 注入所有进程 | MIT |
+| WindowTop | 有 | 有，但闭源 | 无 | 商业付费 |
+
+关键差别在那两个**没有任何开源项目覆盖**的点：`DwmRegisterThumbnail` + `DWM_TNP_OPACITY` 的镜像浮窗，以及 `DWM_TNP_RECTSOURCE` 的区域裁剪克隆。整窗透明那一半，AltSnap 已经做得很好了，可以两个一起装。
+
+## 为什么游戏不能直接改透明度
+
+`SetLayeredWindowAttributes` 不认 Direct3D 交换链——D3D11 的 flip 交换模式、D3D12 窗口（只支持 flip）都会失效，设了 alpha 画面也不变。
+
+所以游戏走镜像浮窗：不是让游戏本体变透明，而是把游戏画面实时"复制"成半透明浮窗贴在最上层，操作仍然落在游戏里（配合"点击透传"，鼠标直接穿到游戏窗口）。
 
 ## 两种模式
 
@@ -28,9 +48,7 @@ Windows 10/11（x64），.NET Framework 4.8 单文件程序，**不向任何进�
 | 整窗透明 | `WS_EX_LAYERED` + `SetLayeredWindowAttributes` | 浏览器、Electron 应用、普通 Win32 窗口 | 整个窗口本体变半透明，直接看到后面内容 |
 | 镜像浮窗 | `DwmRegisterThumbnail` + `DWM_TNP_OPACITY` | 游戏（Direct3D 交换链）、样式被重置的窗口 | 生成一个半透明的实时画面副本浮在最上层 |
 
-**为什么游戏不能用"整窗透明"**：`SetLayeredWindowAttributes` 不认 Direct3D 交换链。D3D11 的 flip 交换模式、D3D12 窗口（只支持 flip）都会失效。所以游戏走镜像浮窗——这不是让游戏本体变透明，而是把游戏画面实时"复制"成半透明浮窗贴在最上层，操作仍然落在游戏里（配合"点击透传"）。
-
-## 2.0 新增的六项能力
+## 功能
 
 1. **预设档 + 平滑过渡**：25/40/60/75/100 五档，热键一键切换，220ms 线性渐变（16ms 帧），不阻塞界面。
 2. **接管前确认弹窗**：选窗口后先弹出确认框，显示标题 / 进程名 / 窗口类 / 句柄，可选择「整窗透明」或「镜像浮窗」、设定初始不透明度，还能勾「排除此软件」——以后不再接管它的任何窗口（防误抓 IDE、录制、输入法面板这类特殊窗口）。
@@ -38,8 +56,20 @@ Windows 10/11（x64），.NET Framework 4.8 单文件程序，**不向任何进�
 4. **每窗口独立滑块**：卡片式列表，一张卡片管一个窗口——标题、进程/模式副标题、独立滑块、百分比、透传开关、区域按钮、关闭 ×。点卡片即把该窗口设为热键作用对象。
 5. **热键全可配**：设置里十项热键，点进输入框直接按组合键即录制（强制至少一个修饰键），保存写 `WinTrans.ini` 并立即重注册；冲突会在状态栏列出被占用的组合。
 6. **区域裁剪克隆**：镜像模式下可框选源窗口的任意一块区域来克隆（`DWM_TNP_RECTSOURCE` + 仅客户区），浮窗尺寸按区域等比缩放。
+7. **镜像浮窗外轮廓拉伸**：抓住浮窗任意一条边或角（7px 内）八向改尺寸，画面实时跟随，最小 80×60；手动拉伸后按新尺寸锁定，心跳不再弹回默认比例。
 
-## 使用
+## 下载
+
+| 文件 | 说明 |
+|---|---|
+| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.3/WinTrans.exe) | 单文件 228 KB，下载双击即用，不需要解压 |
+| [WinTrans-2.3-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.3/WinTrans-2.3-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
+
+运行要求：Windows 10 / 11 x64，系统自带 .NET Framework 4.8（Windows 10 1511 之后默认就有）。**无需安装、无需管理员权限**；要操作以管理员权限运行的窗口（如任务管理器）时才需要右键以管理员身份启动。
+
+> 仓库里不放二进制（`.gitignore` 排除了 `*.exe` / `*.zip` / `dist/`），成品统一在 [Releases](https://github.com/FOKBLACK/WinTrans/releases)。
+
+## 快速上手
 
 双击 `WinTrans.exe`，主界面 + 托盘常驻。
 
@@ -66,7 +96,7 @@ Windows 10/11（x64），.NET Framework 4.8 单文件程序，**不向任何进�
 - **左键抓住外轮廓 7px 范围内的任意一条边或角，可自由拉伸缩放尺寸**，八个方向都支持；光标会变成对应的双向箭头
 - 拉伸过程中镜像画面实时跟随；松手后按当前尺寸锁定，不再被心跳改成默认比例
 - 想回到"按源窗口比例自动贴合"：右键菜单选「贴合源窗口比例」，或做一次放大/缩小
-- 滚轮调透明度（浮窗上前滚变不透明、后滚变更透明）
+- 滚轮调透明度（浮窗上前滚变不透明、后滚变透明）
 - 卡片滑块拖动时透明度即时跟手，没有渐变延迟
 - 右键：点击透传 / 更透明 / 更不透明 / 恢复 100% / 放大 10% / 缩小 10% / 贴合源窗口比例 / 关闭
 - 开启"点击透传"后鼠标直接穿到下层窗口，浮窗只负责显示（此时不能拖动和拉伸）
@@ -80,7 +110,7 @@ Windows 10/11（x64），.NET Framework 4.8 单文件程序，**不向任何进�
 
 ## 配置文件
 
-`WinTrans.ini` 与 exe 同目录，首次运行/保存设置时生成：
+`WinTrans.ini` 与 exe 同目录，首次运行/保存设置时生成（仓库里给的是 `WinTrans.ini.example`）：
 
 ```ini
 [General]
@@ -125,6 +155,27 @@ WinTrans.exe --clone --hwnd 0x00120A34 --region 100,80,420,220    只克隆客�
 - 不支持 UWP 应用窗口的直接透明（走镜像模式可以）
 - 与 AltSnap 同时常驻时注意热键别撞车（AltSnap 占 Alt+滚轮/Alt+拖动）
 
+## 版本变更
+
+### 2.3
+
+- 修复**托盘右键「退出」点了没反应**：`ExitApp()` 原本直接调 `Close()`，而 `OnFormClosing` 把「用户关闭」一律 `e.Cancel = true` 后 `Hide()`，于是点退出只是又隐藏了一次，进程留在托盘里。
+- 改为增加 `exiting` 意图标志：托盘退出先置标志、再 `Close()`，`OnFormClosing` 只对「非退出意图的用户关闭」做拦截；退出时先 `tray.Visible = false` 摘掉图标，再恢复全部窗口透明度、注销热键（各自 try/catch 兜底，保证不会被异常卡住退出）。
+- 点窗口右上角 × 的行为不变：仍然最小化到托盘，热键继续可用。
+
+### 2.2
+
+- 卡片滑块拖动时**即时生效**，不再每次 Scroll 都重启动 220ms 渐变（原来拖动中透明度几乎不动、松手才补动画，看起来就是跳）
+- 拖动中不把数值写回 TrackBar，避免滑块被程序回写打断；百分比数字按 ~33fps 刷新，松手/松键立刻校准
+- 预设热键（Ctrl+Alt+1~5）仍然保留 220ms 平滑过渡，不受影响
+
+### 2.1
+
+- 镜像浮窗支持**外轮廓拉伸缩放**：抓住任意一条边或一个角（7px 内）即可八向改尺寸，画面实时跟随，最小 80×60
+- 浮窗拖动改为直连 `SetWindowPos` + 8ms 合并，不再每帧走 WinForms 布局与重绘，拖动跟手度提升
+- 手动拉伸后自动按新尺寸锁定（`FitLocked=false`），心跳不再把尺寸弹回默认比例；右键「贴合源窗口比例」可恢复
+- 主窗标题精简为 `WinTrans`，程序图标换成自定义多尺寸 `.ico`
+
 ## 编译
 
 ```bat
@@ -132,13 +183,13 @@ csc /target:winexe /platform:x64 /optimize+ /out:WinTrans.exe /win32icon:ICON.ic
     /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll src\WinTrans.cs
 ```
 
+编译器用系统自带的 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`（C# 5 语法），无需安装 SDK。编译前先结束正在运行的 `WinTrans.exe`，否则 exe 被占用会报 CS0016。
+
 ## 图标
 
 - `ICON.ico` 由 `ICON.png` 生成，含 16/20/24/32/40/48/64/96/128/256 十个尺寸帧（≥128 用 PNG 帧压缩，其余为 32bpp DIB + AND 掩码），原始透明圆角与半透明叠窗效果完整保留
 - 主窗标题栏、任务栏、Alt-Tab 与托盘（16px 帧）均使用该图标
 - 想换成自己的图标：替换 `ICON.ico` 后按上面的命令重编译即可，文件名固定
-
-编译器用系统自带的 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`（C# 5 语法），无需安装 SDK。编译前先结束正在运行的 `WinTrans.exe`，否则 exe 被占用会报 CS0016。
 
 ## 许可证
 
