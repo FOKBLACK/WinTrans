@@ -139,3 +139,9 @@ csc /target:winexe /platform:x64 /optimize+ /out:WinTrans.exe /win32icon:ICON.ic
 - 想换成自己的图标：替换 `ICON.ico` 后按上面的命令重编译即可，文件名固定
 
 编译器用系统自带的 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`（C# 5 语法），无需安装 SDK。编译前先结束正在运行的 `WinTrans.exe`，否则 exe 被占用会报 CS0016。
+
+## 许可证
+
+[MIT](LICENSE) — 随便用、随便改、可以商用，只要保留版权声明；作者不承担使用后果。
+
+如果你打算基于本项目做闭源商业版本再分发，MIT 也允许；若希望衍生作品必须同样开源，请把 LICENSE 换成 GPL-3.0。
