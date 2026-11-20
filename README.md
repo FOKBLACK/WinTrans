@@ -41,6 +41,10 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 所以游戏走镜像浮窗：不是让游戏本体变透明，而是把游戏画面实时"复制"成半透明浮窗贴在最上层，操作仍然落在游戏里（配合"点击透传"，鼠标直接穿到游戏窗口）。
 
+![镜像浮窗演示](docs/ui-mirror.png)
+
+上图左边是源窗口（一个记事本，完全没被改动），右边是它的镜像浮窗：DWM 把画面实时克隆过来，按 70% 不透明度贴在最上层。这就是对待 D3D 窗口时唯一有效的做法。
+
 ## 两种模式
 
 | 模式 | 原理 | 适用 | 效果 |
@@ -62,10 +66,13 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 | 文件 | 说明 |
 |---|---|
-| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.3/WinTrans.exe) | 单文件 228 KB，下载双击即用，不需要解压 |
-| [WinTrans-2.3-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.3/WinTrans-2.3-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
+| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.4/WinTrans.exe) | 单文件 228 KB，下载双击即用，不需要解压 |
+| [WinTrans-2.4-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.4/WinTrans-2.4-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
 
 运行要求：Windows 10 / 11 x64，系统自带 .NET Framework 4.8（Windows 10 1511 之后默认就有）。**无需安装、无需管理员权限**；要操作以管理员权限运行的窗口（如任务管理器）时才需要右键以管理员身份启动。
+
+> **关于 SmartScreen**：这个 exe 没有做代码签名（签名证书要花钱），第一次运行时 Windows 可能弹出“Windows 已保护你的电脑 / 未知发布者”。点「更多信息」→「仍要运行」即可。
+> 不放心可以不下载二进制：源码就在 `src/WinTrans.cs`，仓库里只有源码和图标，用文末那条 `csc` 命令自己编一个。
 
 > 仓库里不放二进制（`.gitignore` 排除了 `*.exe` / `*.zip` / `dist/`），成品统一在 [Releases](https://github.com/FOKBLACK/WinTrans/releases)。
 
@@ -157,6 +164,11 @@ WinTrans.exe --clone --hwnd 0x00120A34 --region 100,80,420,220    只克隆客�
 
 ## 版本变更
 
+### 2.4
+
+- **托盘图标重做**：原图的白色叠窗占比太大，落到 16px 托盘尺寸时糊成一个白块。现在 16 / 20 / 24 三个小尺寸改用单独绘制的简化版（深色圆角底 + 白色窗框线），32 及以上仍用原始美术，两种尺寸下都能认出是"一个窗口"。
+- README 增加镜像浮窗实拍说明图、SmartScreen 提示与对比表。
+
 ### 2.3
 
 - 修复**托盘右键「退出」点了没反应**：`ExitApp()` 原本直接调 `Close()`，而 `OnFormClosing` 把「用户关闭」一律 `e.Cancel = true` 后 `Hide()`，于是点退出只是又隐藏了一次，进程留在托盘里。
@@ -187,8 +199,10 @@ csc /target:winexe /platform:x64 /optimize+ /out:WinTrans.exe /win32icon:ICON.ic
 
 ## 图标
 
-- `ICON.ico` 由 `ICON.png` 生成，含 16/20/24/32/40/48/64/96/128/256 十个尺寸帧（≥128 用 PNG 帧压缩，其余为 32bpp DIB + AND 掩码），原始透明圆角与半透明叠窗效果完整保留
-- 主窗标题栏、任务栏、Alt-Tab 与托盘（16px 帧）均使用该图标
+- `ICON.ico` 含 16/20/24/32/40/48/64/96/128/256 十个尺寸帧，全部由 `ICON.png` 派生
+- **16 / 20 / 24 是小尺寸专用版**：原图那种"深底 + 三层半透明白窗"在高分辨率下很好看，但压到 16px 时白色块会糊成一团，所以这三个尺寸单独绘制成"深色圆角底 + 白色窗框线 + 标题栏分隔线"，在深色任务栏和浅色资源管理器里都认得出来
+- 32 及以上沿用原始美术（≥128 用 PNG 帧压缩，其余为 32bpp DIB + AND 掩码）
+- 主窗标题栏、任务栏、Alt-Tab 用 32 帧，托盘用 16 帧
 - 想换成自己的图标：替换 `ICON.ico` 后按上面的命令重编译即可，文件名固定
 
 ## 许可证
