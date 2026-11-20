@@ -1,0 +1,15 @@
+# 编译产物（走 Release，不进仓库）
+*.exe
+*.zip
+dist/
+
+# 运行时生成的本地配置（每台机器不同，热键都是自己录的）
+WinTrans.ini
+
+# 编辑器 / 系统
+.vs/
+*.suo
+*.user
+*.log
+Thumbs.db
+desktop.ini

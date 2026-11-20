@@ -1,0 +1,8 @@
+* text=auto
+
+*.ico binary
+*.png binary
+
+*.cs text eol=crlf
+*.md text eol=lf
+*.ini text eol=crlf
