@@ -67,8 +67,8 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 | 文件 | 说明 |
 |---|---|
-| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.7/WinTrans.exe) | 单文件 226 KB，下载双击即用，不需要解压 |
-| [WinTrans-2.7-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.7/WinTrans-2.7-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
+| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.8/WinTrans.exe) | 单文件 228 KB，下载双击即用，不需要解压 |
+| [WinTrans-2.8-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.8/WinTrans-2.8-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
 
 运行要求：Windows 10 / 11 x64，系统自带 .NET Framework 4.8（Windows 10 1511 之后默认就有）。**无需安装、无需管理员权限**；要操作以管理员权限运行的窗口（如任务管理器）时才需要右键以管理员身份启动。
 
@@ -159,12 +159,19 @@ WinTrans.exe --clone --hwnd 0x00120A34 --region 100,80,420,220    只克隆客�
 ## 已知限制
 
 - 管理员权限运行的窗口（如任务管理器）无法被普通权限的 WinTrans 修改，需右键以管理员身份运行
-- 少数程序会自己重置窗口样式，自愈只补分层位，若程序连 alpha 一起重置则会被它刷回去
+- 少数程序会自己重置窗口样式：自愈会在 150 毫秒内把分层位和 alpha 一起补回（安卓应用 / 模拟器这类会被短暂“实闪”一下，介意就用镜像浮窗）
 - 不支持 UWP 应用窗口的直接透明（走镜像模式可以）
 - 与 AltSnap 同时常驻时注意热键别撞车（AltSnap 占 Alt+滚轮/Alt+拖动）
 - 拾取会主动跳过**全屏透明覆盖层**（NVIDIA GeForce Overlay、Discord / Steam 游戏内覆盖之类）：它们置顶铺满屏幕，不跳过的话每次都会选中它们而不是你想要的软件。想调这类覆盖层本身，用命令行 `--alpha` 指定句柄
 
 ## 版本变更
+
+### 2.8
+
+- **自愈提速到 150 毫秒，并同时校验 alpha**：原来 900 毫秒才检查一次、且只补 `WS_EX_LAYERED` 位；现在既补位，也用 `GetLayeredWindowAttributes` 读回实际值，被程序改成不透明也立刻夺回。实测外部抹掉分层位后 **147 毫秒**恢复。
+- **窗口重建自动重绑**：程序换句柄后（安卓运行时、Qt 应用、切播放器时会换），卡片按「同进程 + 同窗口类 + 同标题」自动接上新窗口并重设透明度，不再变成一张失效卡片。
+- **接管前风险提示**：命中安卓运行时 / 模拟器（`Androws`、`dnplayer`、`MuMuPlayer`、`HD-Player` 等）或含 `subWin` 子窗的 Qt 窗口时，确认弹窗显示橙色提示——「该窗口可能不支持稳定透明（点击后会实闪约 1 秒）。建议使用「镜像浮窗」」，并预选镜像浮窗。
+- 成因实测：这类窗口在交互时会自己把窗口样式写回不带分层位的原值，于是瞬间变实心，等自愈补回才恢复——所以现象是「点击后实闪约 1 秒」，不是透明度丢了。
 
 ### 2.7
 
