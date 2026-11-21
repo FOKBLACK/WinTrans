@@ -66,8 +66,8 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 | 文件 | 说明 |
 |---|---|
-| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.4/WinTrans.exe) | 单文件 228 KB，下载双击即用，不需要解压 |
-| [WinTrans-2.4-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.4/WinTrans-2.4-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
+| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.5/WinTrans.exe) | 单文件 223 KB，下载双击即用，不需要解压 |
+| [WinTrans-2.5-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.5/WinTrans-2.5-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
 
 运行要求：Windows 10 / 11 x64，系统自带 .NET Framework 4.8（Windows 10 1511 之后默认就有）。**无需安装、无需管理员权限**；要操作以管理员权限运行的窗口（如任务管理器）时才需要右键以管理员身份启动。
 
@@ -161,8 +161,14 @@ WinTrans.exe --clone --hwnd 0x00120A34 --region 100,80,420,220    只克隆客�
 - 少数程序会自己重置窗口样式，自愈只补分层位，若程序连 alpha 一起重置则会被它刷回去
 - 不支持 UWP 应用窗口的直接透明（走镜像模式可以）
 - 与 AltSnap 同时常驻时注意热键别撞车（AltSnap 占 Alt+滚轮/Alt+拖动）
+- 拾取会主动跳过**全屏透明覆盖层**（NVIDIA GeForce Overlay、Discord / Steam 游戏内覆盖之类）：它们置顶铺满屏幕，不跳过的话每次都会选中它们而不是你想要的软件。想调这类覆盖层本身，用命令行 `--alpha` 指定句柄
 
 ## 版本变更
+
+### 2.5
+
+- **修「选了窗口总是选中 NVIDIA GeForce Overlay」**：拾取时按 Z 序取最上层窗口，而 NVIDIA 覆盖层（`CEF-OSC-WIDGET`，`WS_EX_TRANSPARENT`，置顶 1919×1080 全屏）永远盖在最上面，于是每次点哪都命中它。现在拾取会跳过 `WS_EX_TRANSPARENT` 的点击穿透窗口、`CEF-OSC-WIDGET` 类，以及 `NVIDIA Overlay.exe` / `NVIDIA Share.exe` 的窗口，命中的是你真正指的那一层。
+- 同一处顺手跳过 Discord / Steam 之类的游戏内覆盖层。
 
 ### 2.4
 

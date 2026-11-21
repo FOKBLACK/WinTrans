@@ -45,6 +45,7 @@ namespace WinTrans
         public const int GWL_EXSTYLE = -20;
         public const int WS_EX_LAYERED = 0x00080000;
         public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int WS_EX_TRANSPARENT = 0x00000020;
         public const uint LWA_ALPHA = 0x2;
         public const uint GA_ROOT = 2;
 
@@ -741,6 +742,15 @@ namespace WinTrans
                 string cls = Nat.ClassName(h);
                 if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd"
                     || cls == "Shell_SecondaryTrayWnd" || cls == "Windows.UI.Core.CoreWindow") return true;
+
+                // 跳过"贴在全屏最上层的透明覆盖层"（NVIDIA Overlay、Discord/Steam overlay 之类）
+                // 它们永远盖在你真正想选的窗口上面，取到毫无意义
+                int ex = Nat.GetWindowLongW(h, Nat.GWL_EXSTYLE);
+                if ((ex & Nat.WS_EX_TRANSPARENT) != 0) return true;
+                if (cls == "CEF-OSC-WIDGET") return true;
+                string proc = Nat.ProcName(h);
+                if (proc == "NVIDIA Overlay.exe" || proc == "NVIDIA Share.exe") return true;
+
                 found.Add(h);
                 return true;
             }, IntPtr.Zero);
