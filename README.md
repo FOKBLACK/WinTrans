@@ -61,13 +61,14 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 5. **热键全可配**：设置里十项热键，点进输入框直接按组合键即录制（强制至少一个修饰键），保存写 `WinTrans.ini` 并立即重注册；冲突会在状态栏列出被占用的组合。
 6. **区域裁剪克隆**：镜像模式下可框选源窗口的任意一块区域来克隆（`DWM_TNP_RECTSOURCE` + 仅客户区），浮窗尺寸按区域等比缩放。
 7. **镜像浮窗外轮廓拉伸**：抓住浮窗任意一条边或角（7px 内）八向改尺寸，画面实时跟随，最小 80×60；手动拉伸后按新尺寸锁定，心跳不再弹回默认比例。
+8. **列表选窗**：主界面「选择窗口」按钮弹出列表，列出当前桌面所有可见窗口（标题 / 进程 / 窗口类 / 句柄，按进程名排序），选中后确定即可接管。准星点不到时用它——被全屏覆盖层挡住、窗口只有一条边露出来、双屏位置记不清，都不影响。
 
 ## 下载
 
 | 文件 | 说明 |
 |---|---|
-| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.5/WinTrans.exe) | 单文件 223 KB，下载双击即用，不需要解压 |
-| [WinTrans-2.5-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.5/WinTrans-2.5-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
+| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.6/WinTrans.exe) | 单文件 226 KB，下载双击即用，不需要解压 |
+| [WinTrans-2.6-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.6/WinTrans-2.6-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
 
 运行要求：Windows 10 / 11 x64，系统自带 .NET Framework 4.8（Windows 10 1511 之后默认就有）。**无需安装、无需管理员权限**；要操作以管理员权限运行的窗口（如任务管理器）时才需要右键以管理员身份启动。
 
@@ -80,7 +81,7 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 双击 `WinTrans.exe`，主界面 + 托盘常驻。
 
-1. 点 **添加窗口**（或热键），屏幕变暗出现准星，点一下目标窗口。
+1. 点 **添加窗口**（或热键），屏幕变暗出现准星，点一下目标窗口；点不准就用旁边的 **选择窗口**，从列表里挑。
 2. 确认弹窗里选模式、定初始不透明度 → **接管**。
 3. 卡片出现后，拖该卡片自己的滑块即可单独调这个窗口（5%–100%）。
 4. 游戏/录屏类窗口选 **镜像浮窗**：会出现半透明克隆窗，可拖动、滚轮调透明度、右键菜单切换"点击透传"；卡片上的 **区域** 按钮可再框选要克隆的局部。
@@ -164,6 +165,11 @@ WinTrans.exe --clone --hwnd 0x00120A34 --region 100,80,420,220    只克隆客�
 - 拾取会主动跳过**全屏透明覆盖层**（NVIDIA GeForce Overlay、Discord / Steam 游戏内覆盖之类）：它们置顶铺满屏幕，不跳过的话每次都会选中它们而不是你想要的软件。想调这类覆盖层本身，用命令行 `--alpha` 指定句柄
 
 ## 版本变更
+
+### 2.6
+
+- **新增「选择窗口」按钮**：主界面按钮旁弹出列表，列出当前所有可见顶层窗口（标题 / 进程 / 窗口类 / 句柄），按进程名排序，单选后点「确定」或双击、回车即可进入原有的接管确认流程。列表已滤掉托盘、输入法面板和全屏覆盖层，不会出现点了没反应的空壳条目。
+- 解决的是「准星点不到」这类问题：窗口被 NVIDIA / Steam 覆盖层压着、窗口只露一条边、多屏位置记不清、远程桌面下手感差。
 
 ### 2.5
 
