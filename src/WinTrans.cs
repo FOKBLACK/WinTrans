@@ -6,7 +6,7 @@
 // 本程序基于"有用"的目的分发，但不提供任何担保，也不承诺适销性或
 // 适用于特定用途——详见 GNU 通用公共许可证。
 // 许可证全文见项目根目录的 LICENSE 文件。
-// 功能：整窗透明(WS_EX_LAYERED) / DWM 缩略图镜像浮窗 / 区域裁剪 / 预设档+平滑渐变
+// 功能：整窗透明(WS_EX_LAYERED) / DWM 缩略图镜像浮窗 / 自定义画面 / 预设档+平滑渐变
 //       / 确认弹窗 / 样式自愈 / 每窗口独立滑块 / 热键可配 / 排除名单 / 列表选窗
 // 编译：csc /target:winexe /platform:x64 /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll
 
@@ -104,6 +104,8 @@ namespace WinTrans
         public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
         [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
         [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] public static extern IntPtr ChildWindowFromPoint(IntPtr hWndParent, POINT pt);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         public static extern int GetPrivateProfileStringW(string section, string key, string def, StringBuilder ret, int size, string file);
@@ -292,13 +294,17 @@ namespace WinTrans
         public int AlphaPct = 70;
         public double ScaleFactor = 0.42;
         public bool ClickThrough = false;
+        public bool ClickForward = false;   // 在浮窗上点一下，转发到源窗口（可用于暂停/播放）
         public Rectangle SourceRect = Rectangle.Empty;
         public Action<int> OnAlphaChanged;
         public Action<OverlayForm> ClosedCallback;
+        public Action<bool> OnThroughChanged;
 
         bool dragging;
         Point dragStart;
         Point dragOrigin;
+        bool clickedNoMove;      // 本次按下之后没被拖动过（用来判定"单击"）
+        Point downPt;
         int resizeDir;              // 0=不在缩放；1左 2右 4上 8下（可组合）
         Rectangle resizeStartBounds;
         Point resizeStartCursor;
@@ -341,7 +347,7 @@ namespace WinTrans
         void BuildMenu()
         {
             ContextMenuStrip menu = new ContextMenuStrip();
-            ToolStripMenuItem ct = new ToolStripMenuItem("点击透传（鼠标穿到下层）");
+            ToolStripMenuItem ct = new ToolStripMenuItem("鼠标穿透（点击穿到下层窗口）");
             ct.CheckOnClick = true;
             ct.Click += delegate { SetClickThrough(ct.Checked); };
             ToolStripMenuItem up = new ToolStripMenuItem("更不透明 (+5%)");
@@ -374,6 +380,8 @@ namespace WinTrans
             menu.Items.Add(fit);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(close);
+            // 每次打开菜单前，按当前状态刷新勾选，避免显示与实际不符
+            menu.Opening += delegate { ct.Checked = ClickThrough; };
             this.ContextMenuStrip = menu;
         }
 
@@ -439,6 +447,22 @@ namespace WinTrans
             ClientSize = new Size(w, h);
         }
 
+        // 设置/更换自定义画面：按新区域重算缩放比，避免用旧比例乘新区域导致浮窗塌成最小尺寸
+        public void ApplySourceRect(Rectangle r, bool keepCurrentSize)
+        {
+            if (keepCurrentSize && r.Width > 0 && ClientSize.Width > 0)
+            {
+                double want = (double)ClientSize.Width / r.Width;
+                if (want < 0.1) want = 0.1;
+                if (want > 2.0) want = 2.0;
+                ScaleFactor = want;
+            }
+            SourceRect = r;
+            FitLocked = true;
+            SnapSize();
+            UpdateThumb();
+        }
+
         public void UpdateThumb()
         {
             if (Thumb == IntPtr.Zero) return;
@@ -469,6 +493,52 @@ namespace WinTrans
         {
             ClickThrough = on;
             Invalidate();
+            if (OnThroughChanged != null) OnThroughChanged(on);
+        }
+
+        // 把浮窗上的一次单击按比例换算成源窗口客户区坐标，投递给源窗口
+        void ForwardClick(Point p)
+        {
+            RECT cr = new RECT();
+            if (!Nat.GetClientRect(Target, out cr)) return;
+            int cw = cr.Right - cr.Left, chh = cr.Bottom - cr.Top;
+            int ow = ClientSize.Width, oh = ClientSize.Height;
+            if (cw <= 0 || chh <= 0 || ow <= 0 || oh <= 0) return;
+            Rectangle src = SourceRect.IsEmpty
+                ? new Rectangle(0, 0, cw, chh)
+                : new Rectangle(SourceRect.X, SourceRect.Y, SourceRect.Width, SourceRect.Height);
+            int sx = src.X + p.X * src.Width / ow;
+            int sy = src.Y + p.Y * src.Height / oh;
+            if (sx < src.X) sx = src.X;
+            if (sy < src.Y) sy = src.Y;
+            if (sx >= src.Right) sx = src.Right - 1;
+            if (sy >= src.Bottom) sy = src.Bottom - 1;
+            if (sx < 0) sx = 0;
+            if (sy < 0) sy = 0;
+
+            IntPtr hit = IntPtr.Zero;
+            POINT pt = new POINT();
+            pt.X = sx; pt.Y = sy;
+            try { hit = Nat.ChildWindowFromPoint(Target, pt); } catch { hit = IntPtr.Zero; }
+            IntPtr dst = (hit != IntPtr.Zero && hit != Target) ? hit : Target;
+            // 目标窗口（可能是子窗口）收到的是它自己的客户区坐标：用屏幕坐标换算一次
+            if (dst != Target)
+            {
+                POINT baseP = new POINT();
+                Nat.ClientToScreen(Target, ref baseP);
+                int screenX = baseP.X + sx, screenY = baseP.Y + sy;
+                POINT childP = new POINT();
+                childP.X = 0; childP.Y = 0;
+                Nat.ClientToScreen(dst, ref childP);
+                sx = screenX - childP.X;
+                sy = screenY - childP.Y;
+            }
+            IntPtr lp = (IntPtr)(((sy & 0xFFFF) << 16) | (sx & 0xFFFF));
+            Nat.PostMessageW(dst, 0x0200, IntPtr.Zero, lp);
+            Nat.PostMessageW(dst, 0x0201, (IntPtr)1, lp);
+            System.Threading.Thread.Sleep(40);
+            Nat.PostMessageW(dst, 0x0202, IntPtr.Zero, lp);
+            Program.Log("click forwarded " + sx + "," + sy + " dst=0x" + dst.ToString("X"));
         }
 
         protected override void WndProc(ref Message m)
@@ -593,6 +663,8 @@ namespace WinTrans
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left || ClickThrough) return;
             int dir = HitDir(e.Location);
+            downPt = e.Location;
+            clickedNoMove = true;
             Program.Log("overlay down loc=" + e.Location + " cur=" + Cursor.Position + " bounds=" + Bounds + " dir=" + dir);
             if (dir != 0)
             {
@@ -612,6 +684,12 @@ namespace WinTrans
         {
             base.OnMouseMove(e);
             if (ClickThrough) return;
+            if (clickedNoMove)
+            {
+                Point cp = Cursor.Position;
+                Point dp = PointToScreen(downPt);
+                if (Math.Abs(cp.X - dp.X) > 4 || Math.Abs(cp.Y - dp.Y) > 4) clickedNoMove = false;
+            }
             if (resizeDir != 0) { ApplyResize(false); return; }
             if (dragging) { ApplyMove(false); return; }
             Cursor = CursorFor(HitDir(e.Location));
@@ -620,7 +698,9 @@ namespace WinTrans
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            bool isClick = clickedNoMove && e.Button == MouseButtons.Left;
             if (dragging || resizeDir != 0) EndGesture();
+            if (isClick && ClickForward && !ClickThrough) ForwardClick(e.Location);
         }
 
         static readonly Font hintFont = new Font("Microsoft YaHei", 8f);
@@ -645,7 +725,7 @@ namespace WinTrans
                 }
             }
             if (ClickThrough)
-                gi.DrawString("透传中 · 右键菜单", hintFont, Brushes.Orange, 6, 4);
+                gi.DrawString("鼠标穿透中 · 右键菜单", hintFont, Brushes.Orange, 6, 4);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -660,7 +740,7 @@ namespace WinTrans
         }
     }
 
-    // 区域框选
+    // 自定义画面框选
     class RegionForm : Form
     {
         IntPtr target;
@@ -670,6 +750,7 @@ namespace WinTrans
         Point cur;
         bool selecting;
         public Action<Rectangle> OnRegion;
+        public Action<string> OnNote;
 
         public RegionForm(IntPtr t)
         {
@@ -718,6 +799,7 @@ namespace WinTrans
                 Math.Abs(cur.X - start.X), Math.Abs(cur.Y - start.Y));
             if (selScreen.Width < 24 || selScreen.Height < 24)
             {
+                if (OnNote != null) OnNote("框选范围太小（小于 24×24），已取消");
                 Close();
                 return;
             }
@@ -732,6 +814,7 @@ namespace WinTrans
             Rectangle reg = Rectangle.Intersect(new Rectangle(cx, cy, sel.Width, sel.Height), clientR);
             if (reg.Width < 24 || reg.Height < 24)
             {
+                if (OnNote != null) OnNote("框选范围落在源窗口客户区之外，没取到有效画面，请重新框选");
                 Close();
                 return;
             }
@@ -760,7 +843,7 @@ namespace WinTrans
             }
             else
             {
-                e.Graphics.DrawString("拖动框选要镜像的区域 · Esc 取消", new Font("Microsoft YaHei", 12f, FontStyle.Bold), Brushes.White, 20, 20);
+                e.Graphics.DrawString("拖动框选要显示的画面范围 · Esc 取消", new Font("Microsoft YaHei", 12f, FontStyle.Bold), Brushes.White, 20, 20);
             }
         }
     }
@@ -1050,10 +1133,9 @@ namespace WinTrans
             bool harsh = Nat.IsLikelyHarsh(h);
             if (harsh)
             {
-                warn.Text = "⚠ 该窗口可能不支持稳定透明（点击后会实闪约 1 秒）。建议使用「镜像浮窗」。";
+                warn.Text = "⚠ 该窗口可能不支持稳定透明（点击后会实闪约 1 秒）。";
                 warn.ForeColor = Color.FromArgb(200, 110, 0);
                 warn.Font = new Font("Microsoft YaHei", 9f, FontStyle.Bold);
-                rbClone.Checked = true;
             }
             else
             {
@@ -1093,7 +1175,7 @@ namespace WinTrans
         public Dictionary<int, Hotkey> Hotkeys;
         public List<string> Exclude;
         readonly string[] names = { "选取窗口", "预设 25%", "预设 40%", "预设 60%", "预设 75%", "预设 100%",
-                                    "透明度 +5%", "透明度 -5%", "全部恢复", "切换点击透传" };
+                                    "透明度 +5%", "透明度 -5%", "全部恢复", "切换鼠标穿透" };
         readonly int[] ids = { 1, 10, 11, 12, 13, 14, 2, 3, 4, 15 };
         TextBox[] boxes = new TextBox[10];
         TextBox tbExclude;
@@ -1201,19 +1283,22 @@ namespace WinTrans
         Label lblTitle, lblSub, lblPct;
         public TrackBar Slider;
         Button btnClose, btnRegion, btnThrough;
+        CheckBox chkForward;
         public bool syncing;
+        public bool syncingUi;
         int lastLabelTick;
 
         public Action<WindowCard, int, bool> OnAlpha;
         public Action<WindowCard> OnClose;
         public Action<WindowCard> OnRegion;
         public Action<WindowCard, bool> OnThrough;
+        public Action<WindowCard, bool> OnForward;
         public Action<WindowCard> OnActivate;
 
         public WindowCard(Managed m)
         {
             Model = m;
-            Height = 112;
+            Height = 128;
             BackColor = Color.White;
             Padding = new Padding(0);
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
@@ -1255,8 +1340,8 @@ namespace WinTrans
             Controls.Add(lblPct);
 
             btnThrough = new Button();
-            btnThrough.Text = "透传";
-            btnThrough.SetBounds(366, 54, 54, 28);
+            btnThrough.Text = "鼠标穿透";
+            btnThrough.SetBounds(366, 54, 76, 28);
             btnThrough.Click += delegate
             {
                 bool on = btnThrough.BackColor != Color.LightGreen;
@@ -1266,8 +1351,8 @@ namespace WinTrans
             Controls.Add(btnThrough);
 
             btnRegion = new Button();
-            btnRegion.Text = "区域";
-            btnRegion.SetBounds(424, 54, 54, 28);
+            btnRegion.Text = "自定义画面";
+            btnRegion.SetBounds(424, 54, 96, 28);
             btnRegion.Click += delegate { if (OnRegion != null) OnRegion(this); };
             Controls.Add(btnRegion);
 
@@ -1278,13 +1363,23 @@ namespace WinTrans
             btnClose.Click += delegate { if (OnClose != null) OnClose(this); };
             Controls.Add(btnClose);
 
+            chkForward = new CheckBox();
+            chkForward.Text = "点浮窗也能操作（点击转发到源窗口，可暂停/播放）";
+            chkForward.Font = new Font("Microsoft YaHei", 8.5f);
+            chkForward.SetBounds(12, 98, 400, 22);
+            chkForward.CheckedChanged += delegate
+            {
+                if (!syncingUi && OnForward != null) OnForward(this, chkForward.Checked);
+            };
+            Controls.Add(chkForward);
+
             UpdateModeUi();
         }
 
         string SubText()
         {
             return Model.Proc + " · " + (Model.CloneMode ? "镜像浮窗" : "整窗透明")
-                + (Model.Region.IsEmpty ? "" : " · 区域 " + Model.Region.Width + "×" + Model.Region.Height);
+                + (Model.Region.IsEmpty ? "" : " · 自定义画面 " + Model.Region.Width + "×" + Model.Region.Height);
         }
 
         public void UpdateModeUi()
@@ -1293,6 +1388,12 @@ namespace WinTrans
             btnThrough.Visible = Model.CloneMode;
             bool through = Model.Overlay != null && Model.Overlay.ClickThrough;
             btnThrough.BackColor = through ? Color.LightGreen : SystemColors.Control;
+            bool forward = Model.Overlay != null && Model.Overlay.ClickForward;
+            syncingUi = true;
+            if (chkForward.Checked != forward) chkForward.Checked = forward;
+            syncingUi = false;
+            chkForward.Visible = Model.CloneMode;
+            chkForward.Enabled = !through;
             lblSub.Text = SubText();
             LayoutChildren();
         }
@@ -1341,12 +1442,14 @@ namespace WinTrans
                 || Slider == null || lblPct == null || lblTitle == null || lblSub == null) return;
             int w = Width;
             btnClose.Left = w - 34;
-            Slider.Width = Math.Max(120, w - 250);
-            lblPct.Left = Slider.Left + Slider.Width + 8;
-            btnThrough.Left = lblPct.Left + 54;
-            btnRegion.Left = btnThrough.Left + 58;
+            // 右侧按钮从卡片右边缘往左排，按钮文字变长也不会被挤出卡片
+            btnRegion.Left = w - 14 - btnRegion.Width;
+            btnThrough.Left = btnRegion.Left - 6 - btnThrough.Width;
+            lblPct.Left = btnThrough.Left - 8 - lblPct.Width;
+            Slider.Width = Math.Max(120, lblPct.Left - Slider.Left - 8);
             lblTitle.Width = w - 50;
             lblSub.Width = w - 24;
+            if (chkForward != null) chkForward.Width = w - 28;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -1695,6 +1798,7 @@ namespace WinTrans
             c.OnClose = delegate(WindowCard card) { Remove(card.Model); };
             c.OnRegion = delegate(WindowCard card) { PickRegion(card.Model); };
             c.OnThrough = delegate(WindowCard card, bool on) { SetThrough(card.Model, on); };
+            c.OnForward = delegate(WindowCard card, bool on) { SetForward(card.Model, on); };
             c.OnActivate = delegate(WindowCard card) { lastTarget = card.Model; };
             flow.Controls.Add(c);
             flow.Controls.SetChildIndex(c, 0);
@@ -1839,9 +1943,7 @@ namespace WinTrans
         {
             if (m.Overlay != null && !m.Overlay.IsDisposed)
             {
-                m.Overlay.SourceRect = m.Region;
-                m.Overlay.SnapSize();
-                m.Overlay.UpdateThumb();
+                m.Overlay.ApplySourceRect(m.Region, true);
                 return;
             }
             OverlayForm o = new OverlayForm(m.Hwnd, m.Alpha, 0.42);
@@ -1858,6 +1960,12 @@ namespace WinTrans
                 if (owner.Card != null) owner.Card.UpdateModeUi();
             };
             o.OnNote = delegate(string s) { Status(s); };
+            // 右键菜单里切了鼠标穿透，主界面卡片上的「鼠标穿透」状态要跟着变
+            o.OnThroughChanged = delegate(bool on)
+            {
+                if (owner.Card != null) owner.Card.UpdateModeUi();
+                Status("鼠标穿透：" + (on ? "开（点击会穿到下层窗口）" : "关"));
+            };
             Rectangle wa = Screen.PrimaryScreen.WorkingArea;
             o.Location = new Point(wa.Right - 640, wa.Bottom - 360);
             m.Overlay = o;
@@ -1881,31 +1989,39 @@ namespace WinTrans
             if (m.Card != null) m.Card.UpdateModeUi();
         }
 
-        void ToggleThrough()
+        void SetForward(Managed m, bool on)
         {
-            Managed t = PickTarget();
-            if (t == null || t.Overlay == null) { Status("先给一个窗口开镜像浮窗，再切换透传"); return; }
+            if (m.Overlay == null)
+            {
+                Status("这个开关只对镜像浮窗有效");
+                if (m.Card != null) m.Card.UpdateModeUi();
+                return;
+            }
+            m.Overlay.ClickForward = on;
+            if (m.Card != null) m.Card.UpdateModeUi();
+            Status(on ? "点浮窗也能操作：开（点画面会转发到源窗口）" : "点浮窗也能操作：关");
+        }
+
+        void ToggleThrough()
+        {            Managed t = PickTarget();
+            if (t == null || t.Overlay == null) { Status("先给一个窗口开镜像浮窗，再切换鼠标穿透"); return; }
             SetThrough(t, !t.Overlay.ClickThrough);
-            Status("点击透传：" + (t.Overlay.ClickThrough ? "开" : "关"));
+            Status("鼠标穿透：" + (t.Overlay.ClickThrough ? "开" : "关"));
         }
 
         void PickRegion(Managed m)
         {
             if (!Nat.IsWindow(m.Hwnd)) { Remove(m); return; }
-            if (!m.CloneMode) { Status("区域裁剪只对镜像浮窗有效"); return; }
+            if (!m.CloneMode) { Status("自定义画面只对镜像浮窗有效"); return; }
             RegionForm rf = new RegionForm(m.Hwnd);
+            rf.OnNote = delegate(string s) { Status(s); };
             rf.OnRegion = delegate(Rectangle r)
             {
                 m.Region = r;
                 if (m.Overlay != null && !m.Overlay.IsDisposed)
-                {
-                    m.Overlay.SourceRect = r;
-                    m.Overlay.FitLocked = true;
-                    m.Overlay.SnapSize();
-                    m.Overlay.UpdateThumb();
-                }
+                    m.Overlay.ApplySourceRect(r, true);
                 if (m.Card != null) m.Card.UpdateModeUi();
-                Status("已设置镜像区域 " + r.Width + "×" + r.Height);
+                Status("已设置自定义画面 " + r.Width + "×" + r.Height);
             };
             rf.Show();
             rf.Activate();
@@ -2124,6 +2240,7 @@ namespace WinTrans
                     scale = double.Parse(args[i + 1]);
             OverlayForm o = new OverlayForm(h, pct, scale);
             o.SourceRect = RectArg(args);
+            for (int i = 0; i < args.Length; i++) if (args[i] == "--forward") o.ClickForward = true;
             Rectangle wa = Screen.PrimaryScreen.WorkingArea;
             o.Location = new Point(wa.Right - 640, wa.Bottom - 360);
             Application.Run(o);
