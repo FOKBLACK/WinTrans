@@ -2150,6 +2150,16 @@ namespace WinTrans
             return true;
         }
 
+        // 启动免责声明：GUI 模式必弹，命令行模式跳过（--no-hint 也可强制跳过）
+        static void ShowDisclaimer()
+        {
+            string text =
+                "WinTrans 不注入、不读内存、不模拟输入，但会创建额外窗口/画面副本或修改显示效果，" +
+                "可能被反作弊系统判定为异常，导致警告或封号。\r\n\r\n" +
+                "不建议用于任何启用反作弊的在线游戏或竞技游戏。继续使用即表示你自行承担全部风险。";
+            MessageBox.Show(text, "使用前须知 - WinTrans", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
         [STAThread]
         static void Main(string[] args)
         {
@@ -2171,6 +2181,10 @@ namespace WinTrans
                 RunCli(args);
                 return;
             }
+
+            bool noHint = false;
+            for (int i = 0; i < args.Length; i++) if (args[i] == "--no-hint") noHint = true;
+            if (!noHint) ShowDisclaimer();
 
             Application.Run(new MainForm());
         }
