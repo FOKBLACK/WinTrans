@@ -786,6 +786,133 @@ namespace WinTrans
         }
     }
 
+    // 从列表里挑窗口（准星点不到时的备用入口：窗口被覆盖层挡住、窗口太窄、鼠标不听话）
+    class WindowListForm : Form
+    {
+        public IntPtr Selected = IntPtr.Zero;
+        ListView lv;
+        Label lblTip;
+        Button btnOk;
+
+        public WindowListForm()
+        {
+            Text = "选择窗口";
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(680, 430);
+            MinimumSize = new Size(520, 300);
+
+            lblTip = new Label();
+            lblTip.SetBounds(12, 10, 656, 20);
+            lblTip.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            lblTip.ForeColor = Color.DimGray;
+            Controls.Add(lblTip);
+
+            lv = new ListView();
+            lv.View = View.Details;
+            lv.FullRowSelect = true;
+            lv.MultiSelect = false;
+            lv.HideSelection = false;
+            lv.GridLines = false;
+            lv.Columns.Add("标题", 250);
+            lv.Columns.Add("进程", 160);
+            lv.Columns.Add("窗口类", 170);
+            lv.Columns.Add("句柄", 78);
+            lv.SetBounds(12, 34, 656, 340);
+            lv.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            lv.DoubleClick += delegate { Accept(); };
+            lv.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter) { Accept(); e.Handled = true; }
+            };
+            lv.SelectedIndexChanged += delegate
+            {
+                if (btnOk != null) btnOk.Enabled = lv.SelectedItems.Count > 0;
+            };
+            Controls.Add(lv);
+
+            btnOk = new Button();
+            btnOk.Text = "确定";
+            btnOk.SetBounds(492, 388, 84, 30);
+            btnOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            btnOk.Enabled = false;
+            btnOk.Click += delegate { Accept(); };
+            Controls.Add(btnOk);
+
+            Button btnCancel = new Button();
+            btnCancel.Text = "取消";
+            btnCancel.SetBounds(584, 388, 84, 30);
+            btnCancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            btnCancel.DialogResult = DialogResult.Cancel;
+            Controls.Add(btnCancel);
+
+            AcceptButton = btnOk;
+            CancelButton = btnCancel;
+
+            Fill();
+        }
+
+        void Fill()
+        {
+            List<object[]> rows = new List<object[]>();
+            Nat.EnumWindows(delegate(IntPtr h, IntPtr l)
+            {
+                if (!Nat.IsWindowVisible(h)) return true;
+                if (Nat.IsOwnProcess(h)) return true;
+                RECT r = new RECT();
+                if (!Nat.GetWindowRect(h, out r)) return true;
+                if (r.Width <= 0 || r.Height <= 0) return true;
+                string cls = Nat.ClassName(h);
+                if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd"
+                    || cls == "Shell_SecondaryTrayWnd" || cls == "Windows.UI.Core.CoreWindow") return true;
+                if (cls == "IME" || cls == "MSCTFIME UI") return true;
+                if (cls == "CEF-OSC-WIDGET") return true;
+                int ex = Nat.GetWindowLongW(h, Nat.GWL_EXSTYLE);
+                if ((ex & Nat.WS_EX_TRANSPARENT) != 0) return true;
+                string proc = Nat.ProcName(h);
+                if (proc == "NVIDIA Overlay.exe" || proc == "NVIDIA Share.exe") return true;
+                string title = Nat.Title(h);
+                if (title == "(无标题窗口)" && (ex & Nat.WS_EX_TOOLWINDOW) != 0) return true;
+                rows.Add(new object[] { h, title, proc, cls });
+                return true;
+            }, IntPtr.Zero);
+
+            rows.Sort(delegate(object[] a, object[] b)
+            {
+                int c = string.Compare((string)a[2], (string)b[2], StringComparison.OrdinalIgnoreCase);
+                if (c != 0) return c;
+                return string.Compare((string)a[1], (string)b[1], StringComparison.OrdinalIgnoreCase);
+            });
+
+            lv.BeginUpdate();
+            for (int i = 0; i < rows.Count; i++)
+            {
+                object[] row = rows[i];
+                IntPtr h = (IntPtr)row[0];
+                ListViewItem it = new ListViewItem((string)row[1]);
+                it.SubItems.Add((string)row[2]);
+                it.SubItems.Add((string)row[3]);
+                it.SubItems.Add("0x" + h.ToString("X"));
+                it.Tag = h;
+                lv.Items.Add(it);
+            }
+            lv.EndUpdate();
+
+            lblTip.Text = "当前桌面可见窗口 " + rows.Count + " 个（按进程名排序，已滤掉托盘、覆盖层、输入法面板）：";
+        }
+
+        void Accept()
+        {
+            if (lv.SelectedItems.Count == 0) return;
+            Selected = (IntPtr)lv.SelectedItems[0].Tag;
+            DialogResult = DialogResult.OK;
+            Close();
+        }
+    }
+
     // 接管前确认
     class ConfirmForm : Form
     {
@@ -1238,27 +1365,33 @@ namespace WinTrans
 
             Button btnAdd = new Button();
             btnAdd.Text = "添加窗口";
-            btnAdd.SetBounds(12, 12, 130, 30);
+            btnAdd.SetBounds(12, 12, 118, 30);
             btnAdd.Click += delegate { StartPick(); };
             top.Controls.Add(btnAdd);
 
+            Button btnList = new Button();
+            btnList.Text = "选择窗口";
+            btnList.SetBounds(136, 12, 118, 30);
+            btnList.Click += delegate { StartList(); };
+            top.Controls.Add(btnList);
+
             Button btnSet = new Button();
             btnSet.Text = "设置";
-            btnSet.SetBounds(150, 12, 80, 30);
+            btnSet.SetBounds(262, 12, 80, 30);
             btnSet.Click += delegate { OpenSettings(); };
             top.Controls.Add(btnSet);
 
             Button btnRestore = new Button();
             btnRestore.Text = "全部恢复";
-            btnRestore.SetBounds(238, 12, 96, 30);
+            btnRestore.SetBounds(348, 12, 96, 30);
             btnRestore.Click += delegate { RestoreAll(); };
             top.Controls.Add(btnRestore);
 
             Label hint = new Label();
-            hint.Text = hotkeys[1].ToString() + " 选取窗口 · " + hotkeys[10].ToString() + "~"
-                + ((Keys)hotkeys[14].Vk).ToString().Replace("D", "") + " 预设透明度 · 卡片内滑块单独调";
+            hint.Text = hotkeys[1].ToString() + " 选取窗口 · 卡片里滑块单独调透明度";
             hint.ForeColor = Color.DimGray;
-            hint.SetBounds(346, 18, 460, 22);
+            hint.SetBounds(454, 18, 356, 22);
+            hint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             top.Controls.Add(hint);
 
             flow = new FlowLayoutPanel();
@@ -1416,6 +1549,17 @@ namespace WinTrans
             pf.OnPick = delegate(IntPtr h) { OnPicked(h); };
             pf.Show();
             pf.Activate();
+        }
+
+        // 列表选窗：不依赖鼠标点中目标，解决被覆盖层挡住 / 窗口太小 的情况
+        void StartList()
+        {
+            ShowMain();
+            WindowListForm wl = new WindowListForm();
+            if (wl.ShowDialog(this) == DialogResult.OK && wl.Selected != IntPtr.Zero)
+                OnPicked(wl.Selected);
+            else
+                Status("已取消选择窗口");
         }
 
         void OnPicked(IntPtr h)
