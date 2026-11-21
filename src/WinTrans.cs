@@ -1,6 +1,13 @@
-// WinTrans 2.0 - 非注入式窗口透明度工具
+// WinTrans - 非注入式窗口透明度工具
+// Copyright (C) 2026 FOKBLACK
+//
+// 本程序是自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证
+// 第 3 版或（由你选择）任何更高版本，重新分发和/或修改它。
+// 本程序基于"有用"的目的分发，但不提供任何担保，也不承诺适销性或
+// 适用于特定用途——详见 GNU 通用公共许可证。
+// 许可证全文见项目根目录的 LICENSE 文件。
 // 功能：整窗透明(WS_EX_LAYERED) / DWM 缩略图镜像浮窗 / 区域裁剪 / 预设档+平滑渐变
-//       / 确认弹窗 / 样式自愈 / 每窗口独立滑块 / 热键可配 / 排除名单
+//       / 确认弹窗 / 样式自愈 / 每窗口独立滑块 / 热键可配 / 排除名单 / 列表选窗
 // 编译：csc /target:winexe /platform:x64 /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll
 
 using System;
