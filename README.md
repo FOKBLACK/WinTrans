@@ -2,7 +2,7 @@
 
 **非注入式 Windows 窗口透明度工具** —— 不碰别人的进程，把任意窗口、甚至游戏画面调成半透明。
 
-![license](https://img.shields.io/badge/license-MIT-green.svg)
+![license](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue.svg)
 ![runtime](https://img.shields.io/badge/.NET%20Framework-4.8-informational.svg)
 ![size](https://img.shields.io/badge/exe-228%20KB-lightgrey.svg)
@@ -67,8 +67,8 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 | 文件 | 说明 |
 |---|---|
-| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.6/WinTrans.exe) | 单文件 226 KB，下载双击即用，不需要解压 |
-| [WinTrans-2.6-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.6/WinTrans-2.6-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
+| [WinTrans.exe](https://github.com/FOKBLACK/WinTrans/releases/download/v2.7/WinTrans.exe) | 单文件 226 KB，下载双击即用，不需要解压 |
+| [WinTrans-2.7-portable-x64.zip](https://github.com/FOKBLACK/WinTrans/releases/download/v2.7/WinTrans-2.7-portable-x64.zip) | 便携包：exe + README + QUICKSTART + LICENSE + ini |
 
 运行要求：Windows 10 / 11 x64，系统自带 .NET Framework 4.8（Windows 10 1511 之后默认就有）。**无需安装、无需管理员权限**；要操作以管理员权限运行的窗口（如任务管理器）时才需要右键以管理员身份启动。
 
@@ -166,6 +166,12 @@ WinTrans.exe --clone --hwnd 0x00120A34 --region 100,80,420,220    只克隆客�
 
 ## 版本变更
 
+### 2.7
+
+- **许可证由 MIT 改为 GPL-3.0-or-later**：`LICENSE` 换成 GNU GPL v3 官方全文；源码文件头加入版权与许可声明；README 许可证一节重写。目的是让任何基于本项目的衍生版本也必须保持开源。
+- 此前按 MIT 发布的 v2.1–v2.6 不受影响，已授出的许可不可撤销；本次变更只适用于之后的版本。
+- 功能与 2.6 完全一致（仅注释与文档变化）。
+
 ### 2.6
 
 - **新增「选择窗口」按钮**：主界面按钮旁弹出列表，列出当前所有可见顶层窗口（标题 / 进程 / 窗口类 / 句柄），按进程名排序，单选后点「确定」或双击、回车即可进入原有的接管确认流程。列表已滤掉托盘、输入法面板和全屏覆盖层，不会出现点了没反应的空壳条目。
@@ -219,6 +225,10 @@ csc /target:winexe /platform:x64 /optimize+ /out:WinTrans.exe /win32icon:ICON.ic
 
 ## 许可证
 
-[MIT](LICENSE) — 随便用、随便改、可以商用，只要保留版权声明；作者不承担使用后果。
+[GPL-3.0-or-later](LICENSE) — GNU 通用公共许可证第 3 版（2007-06-29）或其后的任何版本。
 
-如果你打算基于本项目做闭源商业版本再分发，MIT 也允许；若希望衍生作品必须同样开源，请把 LICENSE 换成 GPL-3.0。
+- **可以**：自由使用、修改、再分发，商业环境里用也可以（包括公司内部部署）
+- **必须**：再分发（无论是原版还是你改过的版本）时，一并提供完整对应源码，并继续以 GPLv3 授权；保留版权声明与许可证文本
+- **不可以**：把衍生版本改成闭源再发布，或附加“禁止商用”之类的额外限制
+
+版权归 `FOKBLACK` 所有，作者不承担使用后果。此前按 MIT 发布的 v2.1–v2.6 仍按 MIT 有效——已授出的许可是不可撤销的，本次变更只适用于之后的版本。
