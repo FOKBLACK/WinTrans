@@ -103,6 +103,7 @@ namespace WinTrans
 
         public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
         [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         public static extern int GetPrivateProfileStringW(string section, string key, string def, StringBuilder ret, int size, string file);
@@ -139,6 +140,55 @@ namespace WinTrans
             uint pid;
             GetWindowThreadProcessId(h, out pid);
             return pid == (uint)Process.GetCurrentProcess().Id;
+        }
+
+        // 是否有指定类名的子窗口（安卓模拟器的 subWin 之类）
+        public static bool HasChildClass(IntPtr h, string cls)
+        {
+            bool found = false;
+            EnumChildWindows(h, delegate(IntPtr c, IntPtr l)
+            {
+                if (ClassName(c) == cls) { found = true; return false; }
+                return true;
+            }, IntPtr.Zero);
+            return found;
+        }
+
+        // 句柄失效后按"同进程 + 同窗口类 + 同标题"找回新建的窗口
+        public static IntPtr FindWindowByProc(string proc, string cls, string title)
+        {
+            IntPtr best = IntPtr.Zero;
+            IntPtr exact = IntPtr.Zero;
+            EnumWindows(delegate(IntPtr h, IntPtr l)
+            {
+                if (!IsWindowVisible(h)) return true;
+                if (IsOwnProcess(h)) return true;
+                if (ProcName(h) != proc) return true;
+                if (!string.IsNullOrEmpty(cls) && ClassName(h) != cls) return true;
+                RECT r;
+                if (!GetWindowRect(h, out r)) return true;
+                if (r.Right - r.Left < 200 || r.Bottom - r.Top < 120) return true;
+                if (Title(h) == title) { exact = h; return false; }
+                if (best == IntPtr.Zero) best = h;
+                return true;
+            }, IntPtr.Zero);
+            return exact != IntPtr.Zero ? exact : best;
+        }
+
+        // 安卓运行时 / 模拟器：这类窗口会自己重写窗口样式，点击后可能实闪
+        public static bool IsLikelyHarsh(IntPtr h)
+        {
+            string p = ProcName(h).ToLower();
+            if (p == "androws.exe" || p == "dnplayer.exe" || p == "ldplayer.exe" ||
+                p == "nemuplayer.exe" || p == "hd-player.exe" || p == "bluestacks.exe" ||
+                p == "mumuplayer.exe" || p == "nox.exe" || p == "xyaz.exe" || p == "memu.exe")
+                return true;
+            string c = ClassName(h);
+            if (c.StartsWith("Qt5") || c.StartsWith("Qt6"))
+            {
+                if (HasChildClass(h, "subWin")) return true;
+            }
+            return false;
         }
     }
 
@@ -214,6 +264,7 @@ namespace WinTrans
         public IntPtr Hwnd;
         public string Title;
         public string Proc;
+        public string Class;
         public bool CloneMode;
         public int Alpha = 70;
         public int FadeFrom;
@@ -996,8 +1047,19 @@ namespace WinTrans
             Controls.Add(chkExclude);
 
             Label warn = new Label();
-            warn.Text = "提示：以管理员权限运行的程序无法被普通权限接管；独占全屏游戏无法镜像。";
-            warn.ForeColor = Color.Gray;
+            bool harsh = Nat.IsLikelyHarsh(h);
+            if (harsh)
+            {
+                warn.Text = "⚠ 该窗口可能不支持稳定透明（点击后会实闪约 1 秒）。建议使用「镜像浮窗」。";
+                warn.ForeColor = Color.FromArgb(200, 110, 0);
+                warn.Font = new Font("Microsoft YaHei", 9f, FontStyle.Bold);
+                rbClone.Checked = true;
+            }
+            else
+            {
+                warn.Text = "提示：以管理员权限运行的程序无法被普通权限接管；独占全屏游戏无法镜像。";
+                warn.ForeColor = Color.Gray;
+            }
             warn.SetBounds(16, 244, 488, 36);
             Controls.Add(warn);
 
@@ -1322,7 +1384,7 @@ namespace WinTrans
             Icon = AppIconLarge();
             ApplyHotkeys();
             tick = new Timer();
-            tick.Interval = 900;
+            tick.Interval = 150;
             tick.Tick += delegate { HeartBeat(); };
             tick.Start();
             fade = new Timer();
@@ -1602,6 +1664,7 @@ namespace WinTrans
             m.Hwnd = h;
             m.Title = Nat.Title(h);
             m.Proc = proc;
+            m.Class = Nat.ClassName(h);
             m.CloneMode = cf.CloneMode;
             m.Alpha = cf.Alpha;
             items.Add(m);
@@ -1848,23 +1911,65 @@ namespace WinTrans
             rf.Activate();
         }
 
-        // ---------- 自愈 + 跟随 ----------
+        // ---------- 自愈 + 跟随 + 重绑 ----------
         void HeartBeat()
         {
             for (int i = items.Count - 1; i >= 0; i--)
             {
                 Managed m = items[i];
-                if (!Nat.IsWindow(m.Hwnd)) { Remove(m); continue; }
 
-                // 样式自愈：只修复"分层样式被程序重置"，不动用户主动调过的 alpha
+                // 窗口被程序重建：按 同进程 + 同窗口类 + 同标题 重新接上
+                if (!Nat.IsWindow(m.Hwnd))
+                {
+                    IntPtr nh = Nat.FindWindowByProc(m.Proc, m.Class, m.Title);
+                    if (nh != IntPtr.Zero && nh != m.Hwnd)
+                    {
+                        Program.Log("Rebind 0x" + m.Hwnd.ToString("X") + " -> 0x" + nh.ToString("X"));
+                        CloseOverlay(m);
+                        m.Hwnd = nh;
+                        m.Title = Nat.Title(nh);
+                        m.Class = Nat.ClassName(nh);
+                        m.Touched = false;
+                        if (m.CloneMode)
+                        {
+                            EnsureOverlay(m);
+                            if (m.Overlay != null) m.Overlay.SetAlpha(m.Alpha);
+                        }
+                        else
+                        {
+                            CaptureOriginal(m);
+                            ApplyAlphaValue(m, m.Alpha);
+                        }
+                        if (m.Card != null) m.Card.UpdateModeUi();
+                        Status("窗口已重建，自动重新接管：" + m.Title);
+                        continue;
+                    }
+                    Remove(m);
+                    continue;
+                }
+
+                // 样式/透明度自愈：程序把 LAYERED 位抹掉、或把 alpha 改回去，都要立刻夺回
                 if (!m.CloneMode && !m.Fading && m.Touched)
                 {
                     int ex = Nat.GetWindowLongW(m.Hwnd, Nat.GWL_EXSTYLE);
+                    byte want = (byte)(255 * m.Alpha / 100);
                     if ((ex & Nat.WS_EX_LAYERED) == 0)
                     {
                         Nat.SetWindowLongW(m.Hwnd, Nat.GWL_EXSTYLE, ex | Nat.WS_EX_LAYERED);
-                        Nat.SetLayeredWindowAttributes(m.Hwnd, 0, (byte)(255 * m.Alpha / 100), Nat.LWA_ALPHA);
-                        Program.Log("SelfHeal hwnd=0x" + m.Hwnd.ToString("X"));
+                        Nat.SetLayeredWindowAttributes(m.Hwnd, 0, want, Nat.LWA_ALPHA);
+                        Program.Log("SelfHeal style hwnd=0x" + m.Hwnd.ToString("X"));
+                    }
+                    else
+                    {
+                        uint c = 0; byte a = 255; uint f = 0;
+                        if (Nat.GetLayeredWindowAttributes(m.Hwnd, out c, out a, out f))
+                        {
+                            if (a != want)
+                            {
+                                Nat.SetLayeredWindowAttributes(m.Hwnd, 0, want, Nat.LWA_ALPHA);
+                                Program.Log("SelfHeal alpha hwnd=0x" + m.Hwnd.ToString("X") + " cur=" + a + " want=" + want);
+                            }
+                        }
                     }
                 }
 
