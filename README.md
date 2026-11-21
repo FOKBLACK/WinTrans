@@ -5,7 +5,7 @@
 ![license](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue.svg)
 ![runtime](https://img.shields.io/badge/.NET%20Framework-4.8-informational.svg)
-![size](https://img.shields.io/badge/exe-228%20KB-lightgrey.svg)
+![size](https://img.shields.io/badge/exe-232%20KB-lightgrey.svg)
 
 ![WinTrans 主界面](docs/ui-main.png)
 
@@ -28,7 +28,7 @@ WinTrans 是一个 Windows 上的小工具，用来**调低某个窗口的不透
 
 | 工具 | 调透明度 | 镜像浮窗 / 自定义画面克隆 | 注入进程 | 授权 |
 |---|---|---|---|---|
-| **WinTrans** | 有，每窗口独立滑块 | 有，可框选局部区域 | 无 | MIT |
+| **WinTrans** | 有，每窗口独立滑块 | 有，可框选局部区域 | 无 | GPL-3.0 |
 | AltSnap / AltDrag | 有，Alt+滚轮 | 无 | 无（AltSnap 已移除注入） | GPL |
 | SmartSystemMenu | 有，右键菜单档位 | 无 | **有**，Hook DLL 注入所有进程 | MIT |
 | WindowTop | 有 | 有，但闭源 | 无 | 商业付费 |
